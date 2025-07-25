@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audiovisual Wave Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&display=swap" rel="stylesheet">
+    <!-- Include Tone.js for audio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        /* --- General Body & Font Styles --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        /* --- Canvas Styling --- */
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* --- UI Styling (40% smaller) --- */
+        .ui-container {
+            transition: opacity 0.5s ease-in-out;
+        }
+        .ui-container.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 10px;
+            font-weight: 400;
+            text-align: center;
+            pointer-events: none;
+        }
+        #shape-buttons-container {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .shape-btn {
+            background-color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            color: rgba(255, 255, 255, 0.8);
+            width: 26px;
+            height: 26px;
+            padding: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .shape-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .shape-btn.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+        .shape-btn svg {
+            width: 100%;
+            height: 100%;
+        }
+        #bottom-controls-container {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            z-index: 3;
+            background: rgba(30, 30, 30, 0.5);
+            padding: 9px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+        .slider-group label {
+            display: block;
+            font-size: 8px;
+            margin-bottom: 5px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .slider-group input[type="range"] {
+            width: 72px;
+        }
+        
+        /* --- Toggle Switch Styling (40% smaller) --- */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 8px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 24px;
+            height: 13px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255,255,255,0.2);
+            transition: .4s;
+            border-radius: 13px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 9px;
+            width: 9px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #4ade80; /* Green when on */
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(11px);
+        }
+
+        /* --- Autoplay & Frequency Styling (40% smaller) --- */
+        #autoplay-btn {
+            background-color: rgba(37, 99, 235, 0.7); /* Blue */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 5px 7px;
+            border-radius: 6px;
+            font-family: 'Inter', sans-serif;
+            font-size: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: background-color 0.2s;
+        }
+        #autoplay-btn:hover {
+            background-color: rgba(37, 99, 235, 0.9);
+        }
+        #autoplay-btn.playing {
+            background-color: rgba(220, 38, 38, 0.7); /* Red */
+        }
+        #autoplay-btn.playing:hover {
+            background-color: rgba(220, 38, 38, 0.9);
+        }
+        #frequency-range-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 3px;
+        }
+        .freq-btn {
+            background-color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 7px;
+            cursor: pointer;
+            text-align: center;
+            transition: background-color 0.2s;
+        }
+        .freq-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .freq-btn.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+        /* --- Hot Corner for UI Reveal --- */
+        #hot-corner {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100px;
+            height: 100px;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <!-- 2D Canvas for Waves and Text -->
+    <canvas id="waveCanvas"></canvas>
+    
+    <div id="instructions" class="ui-container">Click or tap to create a wave and a tone</div>
+    
+    <div id="shape-buttons-container" class="ui-container">
+        <button class="shape-btn active" data-shape="circle" title="Circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg>
+        </button>
+        <button class="shape-btn" data-shape="triangle" title="Triangle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 22h20L12 2z"></path></svg>
+        </button>
+        <button class="shape-btn" data-shape="square" title="Square">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+        </button>
+        <button class="shape-btn" data-shape="pentagon" title="Pentagon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l9.5 7-3.5 11.5h-12L2.5 9.5z"></path></svg>
+        </button>
+        <button class="shape-btn" data-shape="hexagon" title="Hexagon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+        </button>
+    </div>
+    <div id="bottom-controls-container" class="ui-container">
+        <button id="autoplay-btn">Auto Play</button>
+        <div class="slider-group">
+            <label for="interval-slider">Interval: <span id="interval-value">1.0</span>s</label>
+            <input type="range" id="interval-slider" min="1" max="5" value="1" step="0.1">
+        </div>
+        <div id="frequency-range-container">
+            <button class="freq-btn" data-range="low">Low</button>
+            <button class="freq-btn active" data-range="mid">Mid</button>
+            <button class="freq-btn" data-range="high">High</button>
+        </div>
+        <div class="toggle-container">
+            <span>Hide Freq</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="frequency-toggle">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="toggle-container">
+            <span>Rotate</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="rotation-toggle">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="slider-group">
+            <label for="duration-slider">Duration: <span id="duration-value">1.0</span>s</label>
+            <input type="range" id="duration-slider" min="1" max="5" value="1" step="0.1">
+        </div>
+    </div>
+    <div id="hot-corner"></div>
+
+    <script>
+        window.onload = function() {
+            // --- UI and Canvas Setup ---
+            const waveCanvas = document.getElementById('waveCanvas');
+            const ctx = waveCanvas.getContext('2d');
+            const uiContainers = document.querySelectorAll('.ui-container');
+            const shapeButtonsContainer = document.getElementById('shape-buttons-container');
+            const durationSlider = document.getElementById('duration-slider');
+            const durationValueSpan = document.getElementById('duration-value');
+            const intervalSlider = document.getElementById('interval-slider');
+            const intervalValueSpan = document.getElementById('interval-value');
+            const rotationToggle = document.getElementById('rotation-toggle');
+            const frequencyToggle = document.getElementById('frequency-toggle');
+            const autoplayBtn = document.getElementById('autoplay-btn');
+            const freqRangeContainer = document.getElementById('frequency-range-container');
+            const hotCorner = document.getElementById('hot-corner');
+            waveCanvas.width = window.innerWidth;
+            waveCanvas.height = window.innerHeight;
+
+            // --- Global Variables & State ---
+            const radioWaves = [];
+            const frequencyTexts = [];
+            let hue = 200;
+            let audioStarted = false;
+            let currentShape = 'circle';
+            let soundDuration = 1.0;
+            let isRotationOn = false;
+            let showFrequency = true;
+            let isAutoPlaying = false;
+            let autoPlayInterval = null;
+            let autoPlayIntervalTime = 1000; // in ms
+            let currentFreqRange = 'mid';
+            const frequencyRanges = {
+                low: { min: 240, max: 420 },
+                mid: { min: 430, max: 538 },
+                high: { min: 670, max: 923 }
+            };
+            let uiHideTimeout = null;
+            let showUITimeout = null;
+
+            // --- UI Auto-hide/show Logic ---
+            function showUI() {
+                uiContainers.forEach(el => el.classList.remove('hidden'));
+                resetHideUITimer();
+            }
+
+            function hideUI() {
+                uiContainers.forEach(el => el.classList.add('hidden'));
+            }
+
+            function resetHideUITimer() {
+                clearTimeout(uiHideTimeout);
+                uiHideTimeout = setTimeout(hideUI, 5000); // Hide after 5 seconds
+            }
+
+            // --- Utility Functions ---
+            function handleResize() {
+                waveCanvas.width = window.innerWidth;
+                waveCanvas.height = window.innerHeight;
+            }
+
+            // --- Class for Floating Frequency Text ---
+            class FrequencyText {
+                constructor(x, y, text) {
+                    this.x = x;
+                    this.y = y;
+                    this.text = text;
+                    this.alpha = 1.0;
+                    this.life = 2;
+                }
+                update(deltaTime) {
+                    this.life -= deltaTime;
+                    this.alpha = this.life / 2;
+                    this.y -= 10 * deltaTime;
+                }
+                draw(context) {
+                    context.save();
+                    context.font = "300 10px Inter"; // Smaller font
+                    context.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                    context.textAlign = "center";
+                    context.fillText(this.text, this.x, this.y);
+                    context.restore();
+                }
+            }
+
+            // --- RadioWave Class (2D) ---
+            class RadioWave {
+                constructor(x, y, hue, shape) {
+                    this.x = x;
+                    this.y = y;
+                    this.hue = hue;
+                    this.shape = shape;
+                    this.radius = 1;
+                    this.alpha = 1;
+                    this.lineWidth = 3;
+                    this.rotation = 0;
+                }
+                update() {
+                    this.radius += 2.0;
+                    if (isRotationOn) this.rotation += 0.02;
+                    if (this.alpha > 0) this.alpha -= 0.005;
+                    else this.alpha = 0;
+                }
+                draw(context) {
+                    context.save();
+                    context.strokeStyle = `hsla(${this.hue}, 100%, 70%, ${this.alpha})`;
+                    context.lineWidth = this.lineWidth;
+                    context.translate(this.x, this.y);
+                    context.rotate(this.rotation);
+                    context.beginPath();
+                    const sides = {'circle': 40, 'triangle': 3, 'square': 4, 'pentagon': 5, 'hexagon': 6}[this.shape] || 40;
+                    if (this.shape === 'circle') {
+                        context.arc(0, 0, this.radius, 0, Math.PI * 2, false);
+                    } else {
+                        const angleOffset = this.shape === 'square' ? Math.PI / 4 : Math.PI / 2;
+                        for (let i = 0; i < sides; i++) {
+                            const x_ = 0 + this.radius * Math.cos(angleOffset + (i * 2 * Math.PI / sides));
+                            const y_ = 0 - this.radius * Math.sin(angleOffset + (i * 2 * Math.PI / sides));
+                            if (i === 0) context.moveTo(x_, y_);
+                            else context.lineTo(x_, y_);
+                        }
+                        context.closePath();
+                    }
+                    context.stroke();
+                    context.restore();
+                }
+            }
+
+            // --- Main Animation Loop ---
+            let lastTime = 0;
+            function animate(currentTime) {
+                requestAnimationFrame(animate);
+                const deltaTime = (currentTime - lastTime) / 1000 || 0;
+                lastTime = currentTime;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+                hue = (hue + 0.5) % 360;
+                [...radioWaves, ...frequencyTexts].forEach(item => {
+                    item.update(deltaTime);
+                    item.draw(ctx);
+                });
+                for (let i = radioWaves.length - 1; i >= 0; i--) if (radioWaves[i].alpha <= 0) radioWaves.splice(i, 1);
+                for (let i = frequencyTexts.length - 1; i >= 0; i--) if (frequencyTexts[i].life <= 0) frequencyTexts.splice(i, 1);
+            }
+
+            // --- Core Function to create a wave/tone ---
+            function createWave(x, y, useRange = false) {
+                if (!audioStarted) {
+                    Tone.start();
+                    audioStarted = true;
+                }
+                radioWaves.push(new RadioWave(x, y, hue, currentShape));
+                const synth = new Tone.Synth({oscillator: {type: "sine"}, envelope: {attack: 0.01, decay: 0.1, sustain: 1.0, release: 0.1}}).toDestination();
+                let randomFreq;
+                if (useRange) {
+                    const range = frequencyRanges[currentFreqRange];
+                    randomFreq = Math.random() * (range.max - range.min) + range.min;
+                } else {
+                    randomFreq = Math.random() * (1000 - 200) + 200; // New manual range 200-1000 Hz
+                }
+                synth.volume.value = -10;
+                synth.triggerAttack(randomFreq, Tone.now());
+                synth.volume.rampTo(-40, soundDuration, Tone.now());
+                synth.triggerRelease(Tone.now() + soundDuration);
+                if (showFrequency) {
+                    const freqText = `${Math.round(randomFreq)} Hz`;
+                    frequencyTexts.push(new FrequencyText(x, y, freqText));
+                }
+            }
+
+            // --- Event Listeners ---
+            function handleManualClick(e) {
+                const mouseX = e.clientX || (e.touches && e.touches[0].clientX);
+                const mouseY = e.clientY || (e.touches && e.touches[0].clientY);
+                createWave(mouseX, mouseY, false);
+                resetHideUITimer();
+            }
+
+            function toggleAutoPlay() {
+                isAutoPlaying = !isAutoPlaying;
+                if (isAutoPlaying) {
+                    autoplayBtn.textContent = 'Stop';
+                    autoplayBtn.classList.add('playing');
+                    if (autoPlayInterval) clearInterval(autoPlayInterval);
+                    autoPlayInterval = setInterval(() => {
+                        const randomX = Math.random() * waveCanvas.width;
+                        const randomY = Math.random() * waveCanvas.height;
+                        createWave(randomX, randomY, true);
+                    }, autoPlayIntervalTime);
+                } else {
+                    autoplayBtn.textContent = 'Auto Play';
+                    autoplayBtn.classList.remove('playing');
+                    clearInterval(autoPlayInterval);
+                }
+                resetHideUITimer();
+            }
+
+            function handleShapeButtonClick(e) {
+                const clickedButton = e.target.closest('.shape-btn');
+                if (!clickedButton) return;
+                currentShape = clickedButton.dataset.shape;
+                shapeButtonsContainer.querySelectorAll('.shape-btn').forEach(btn => btn.classList.remove('active'));
+                clickedButton.classList.add('active');
+                resetHideUITimer();
+            }
+
+            function handleFreqRangeClick(e) {
+                const clickedButton = e.target.closest('.freq-btn');
+                if (!clickedButton) return;
+                currentFreqRange = clickedButton.dataset.range;
+                freqRangeContainer.querySelectorAll('.freq-btn').forEach(btn => btn.classList.remove('active'));
+                clickedButton.classList.add('active');
+                resetHideUITimer();
+            }
+
+            function handleSliderInput(e) {
+                soundDuration = parseFloat(e.target.value);
+                durationValueSpan.textContent = soundDuration.toFixed(1);
+                resetHideUITimer();
+            }
+            
+            function handleIntervalSliderInput(e) {
+                autoPlayIntervalTime = parseFloat(e.target.value) * 1000;
+                intervalValueSpan.textContent = (autoPlayIntervalTime / 1000).toFixed(1);
+                if (isAutoPlaying) { // If it's already playing, restart with the new interval
+                    toggleAutoPlay(); // stop
+                    toggleAutoPlay(); // start again
+                }
+                resetHideUITimer();
+            }
+
+            function handleRotationToggle(e) {
+                isRotationOn = e.target.checked;
+                resetHideUITimer();
+            }
+
+            function handleFrequencyToggle(e) {
+                showFrequency = !e.target.checked;
+                resetHideUITimer();
+            }
+
+            // --- Initial Setup ---
+            window.addEventListener('resize', handleResize);
+            waveCanvas.addEventListener('click', handleManualClick);
+            waveCanvas.addEventListener('touchstart', handleManualClick);
+            shapeButtonsContainer.addEventListener('click', handleShapeButtonClick);
+            freqRangeContainer.addEventListener('click', handleFreqRangeClick);
+            durationSlider.addEventListener('input', handleSliderInput);
+            intervalSlider.addEventListener('input', handleIntervalSliderInput);
+            rotationToggle.addEventListener('change', handleRotationToggle);
+            frequencyToggle.addEventListener('change', handleFrequencyToggle);
+            autoplayBtn.addEventListener('click', toggleAutoPlay);
+
+            hotCorner.addEventListener('mouseenter', () => {
+                clearTimeout(showUITimeout);
+                showUITimeout = setTimeout(showUI, 1000);
+            });
+            hotCorner.addEventListener('mouseleave', () => {
+                clearTimeout(showUITimeout);
+            });
+            
+            // Also reset timer on any general mouse move or touch
+            document.body.addEventListener('mousemove', resetHideUITimer);
+            document.body.addEventListener('touchstart', resetHideUITimer);
+
+
+            resetHideUITimer(); // Start the initial timer
+            animate(0);
+        };
+    </script>
+</body>
+</html>
