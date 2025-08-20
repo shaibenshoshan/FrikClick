@@ -27,6 +27,13 @@
             left: 0;
             z-index: 1;
         }
+        
+        /* --- Hidden YouTube Player --- */
+        #player {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+        }
 
         /* --- UI Styling (40% smaller) --- */
         .ui-container {
@@ -154,7 +161,7 @@
             transform: translateX(11px);
         }
 
-        /* --- Autoplay & Frequency Styling (40% smaller) --- */
+        /* --- Autoplay Styling (40% smaller) --- */
         #autoplay-btn {
             background-color: rgba(37, 99, 235, 0.7); /* Blue */
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -176,45 +183,37 @@
         #autoplay-btn.playing:hover {
             background-color: rgba(220, 38, 38, 0.9);
         }
-        #frequency-range-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 3px;
-        }
-        .freq-btn {
-            background-color: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            color: rgba(255, 255, 255, 0.7);
-            padding: 4px;
-            border-radius: 4px;
-            font-size: 7px;
-            cursor: pointer;
-            text-align: center;
-            transition: background-color 0.2s;
-        }
-        .freq-btn:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        .freq-btn.active {
-            background-color: rgba(255, 255, 255, 0.3);
-            color: #fff;
-        }
-        /* --- Hot Corner for UI Reveal --- */
-        #hot-corner {
+        
+        /* --- Show UI Button --- */
+        #show-ui-btn {
             position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100px;
-            height: 100px;
+            bottom: 12px;
+            left: 12px;
             z-index: 2;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 8px;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #show-ui-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
         }
     </style>
 </head>
 <body>
     <!-- 2D Canvas for Waves and Text -->
     <canvas id="waveCanvas"></canvas>
+    <!-- Div for the hidden YouTube player -->
+    <div id="player"></div>
     
-    <div id="instructions" class="ui-container">Click or tap to create a wave and a tone</div>
+    <div id="instructions" class="ui-container">Click or drag to create waves and tones</div>
     
     <div id="shape-buttons-container" class="ui-container">
         <button class="shape-btn active" data-shape="circle" title="Circle">
@@ -239,10 +238,16 @@
             <label for="interval-slider">Interval: <span id="interval-value">1.0</span>s</label>
             <input type="range" id="interval-slider" min="1" max="5" value="1" step="0.1">
         </div>
-        <div id="frequency-range-container">
-            <button class="freq-btn" data-range="low">Low</button>
-            <button class="freq-btn active" data-range="mid">Mid</button>
-            <button class="freq-btn" data-range="high">High</button>
+        <div class="slider-group">
+            <label for="volume-slider">Volume: <span id="volume-value">50</span>%</label>
+            <input type="range" id="volume-slider" min="0" max="100" value="50" step="1">
+        </div>
+        <div class="toggle-container">
+            <span>Mute Music</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="music-mute-toggle" checked>
+                <span class="toggle-slider"></span>
+            </label>
         </div>
         <div class="toggle-container">
             <span>Hide Freq</span>
@@ -263,9 +268,32 @@
             <input type="range" id="duration-slider" min="1" max="5" value="1" step="0.1">
         </div>
     </div>
-    <div id="hot-corner"></div>
+    <button id="show-ui-btn">Show UI</button>
 
     <script>
+        // Load YouTube API script
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        // Global variable for the player
+        var player;
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('player', {
+                height: '1',
+                width: '1',
+                videoId: '5qap5aO4i9A', 
+                playerVars: { 'autoplay': 1, 'loop': 1, 'playlist': '5qap5aO4i9A', 'controls': 0 },
+                events: { 'onReady': onPlayerReady }
+            });
+        }
+
+        function onPlayerReady(event) {
+            event.target.mute();
+            event.target.playVideo();
+        }
+
         window.onload = function() {
             // --- UI and Canvas Setup ---
             const waveCanvas = document.getElementById('waveCanvas');
@@ -276,11 +304,13 @@
             const durationValueSpan = document.getElementById('duration-value');
             const intervalSlider = document.getElementById('interval-slider');
             const intervalValueSpan = document.getElementById('interval-value');
+            const volumeSlider = document.getElementById('volume-slider');
+            const volumeValueSpan = document.getElementById('volume-value');
             const rotationToggle = document.getElementById('rotation-toggle');
             const frequencyToggle = document.getElementById('frequency-toggle');
+            const musicMuteToggle = document.getElementById('music-mute-toggle');
             const autoplayBtn = document.getElementById('autoplay-btn');
-            const freqRangeContainer = document.getElementById('frequency-range-container');
-            const hotCorner = document.getElementById('hot-corner');
+            const showUiBtn = document.getElementById('show-ui-btn');
             waveCanvas.width = window.innerWidth;
             waveCanvas.height = window.innerHeight;
 
@@ -295,24 +325,25 @@
             let showFrequency = true;
             let isAutoPlaying = false;
             let autoPlayInterval = null;
-            let autoPlayIntervalTime = 1000; // in ms
-            let currentFreqRange = 'mid';
-            const frequencyRanges = {
-                low: { min: 240, max: 420 },
-                mid: { min: 430, max: 538 },
-                high: { min: 670, max: 923 }
-            };
+            let autoPlayIntervalTime = 1000;
+            const mapFreq = { min: 200, max: 1200 }; // Adjusted max frequency
+            let mapMaxRadius = Math.min(window.innerWidth, window.innerHeight) * 0.6;
             let uiHideTimeout = null;
-            let showUITimeout = null;
+            let masterOut;
+            let isDragging = false;
+            let dragSynth = null;
+            let limiter;
 
             // --- UI Auto-hide/show Logic ---
             function showUI() {
                 uiContainers.forEach(el => el.classList.remove('hidden'));
+                showUiBtn.classList.remove('visible');
                 resetHideUITimer();
             }
 
             function hideUI() {
                 uiContainers.forEach(el => el.classList.add('hidden'));
+                showUiBtn.classList.add('visible');
             }
 
             function resetHideUITimer() {
@@ -324,25 +355,44 @@
             function handleResize() {
                 waveCanvas.width = window.innerWidth;
                 waveCanvas.height = window.innerHeight;
+                mapMaxRadius = Math.min(window.innerWidth, window.innerHeight) * 0.6; // Recalculate on resize
+            }
+
+            // --- Drawing Functions ---
+            function drawFrequencyMap() {
+                const centerX = waveCanvas.width / 2;
+                const centerY = waveCanvas.height / 2;
+                ctx.save();
+                ctx.lineWidth = 1;
+                
+                for (let i = 0; i < 5; i++) {
+                    ctx.beginPath();
+                    // Calculate opacity: 10% (0.1) for i=0 down to 2% (0.02) for i=4
+                    const opacity = 0.1 - (i * 0.02);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                    
+                    const radius = mapMaxRadius * ((i + 1) / 5);
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Draw frequency text
+                    const freq = mapFreq.min + (mapFreq.max - mapFreq.min) * ((i + 1) / 5);
+                    ctx.font = "300 8px Inter";
+                    ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 2})`; // Make text slightly more visible
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(`${Math.round(freq)} Hz`, centerX, centerY - radius - 8);
+                }
+                ctx.restore();
             }
 
             // --- Class for Floating Frequency Text ---
             class FrequencyText {
-                constructor(x, y, text) {
-                    this.x = x;
-                    this.y = y;
-                    this.text = text;
-                    this.alpha = 1.0;
-                    this.life = 2;
-                }
-                update(deltaTime) {
-                    this.life -= deltaTime;
-                    this.alpha = this.life / 2;
-                    this.y -= 10 * deltaTime;
-                }
+                constructor(x, y, text) { this.x = x; this.y = y; this.text = text; this.alpha = 1.0; this.life = 2; }
+                update(deltaTime) { this.life -= deltaTime; this.alpha = this.life / 2; this.y -= 10 * deltaTime; }
                 draw(context) {
                     context.save();
-                    context.font = "300 10px Inter"; // Smaller font
+                    context.font = "300 10px Inter";
                     context.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
                     context.textAlign = "center";
                     context.fillText(this.text, this.x, this.y);
@@ -352,21 +402,14 @@
 
             // --- RadioWave Class (2D) ---
             class RadioWave {
-                constructor(x, y, hue, shape) {
-                    this.x = x;
-                    this.y = y;
-                    this.hue = hue;
-                    this.shape = shape;
-                    this.radius = 1;
-                    this.alpha = 1;
-                    this.lineWidth = 3;
-                    this.rotation = 0;
+                constructor(x, y, hue, shape, isDragWave = false) { 
+                    this.x = x; this.y = y; this.hue = hue; this.shape = shape; this.radius = 1; this.alpha = 1; this.lineWidth = isDragWave ? 1 : 3; this.rotation = 0; 
+                    this.fadeSpeed = isDragWave ? 0.05 : 0.005; // Faster fade for drag waves
                 }
                 update() {
                     this.radius += 2.0;
                     if (isRotationOn) this.rotation += 0.02;
-                    if (this.alpha > 0) this.alpha -= 0.005;
-                    else this.alpha = 0;
+                    if (this.alpha > 0) this.alpha -= this.fadeSpeed; else this.alpha = 0;
                 }
                 draw(context) {
                     context.save();
@@ -383,8 +426,7 @@
                         for (let i = 0; i < sides; i++) {
                             const x_ = 0 + this.radius * Math.cos(angleOffset + (i * 2 * Math.PI / sides));
                             const y_ = 0 - this.radius * Math.sin(angleOffset + (i * 2 * Math.PI / sides));
-                            if (i === 0) context.moveTo(x_, y_);
-                            else context.lineTo(x_, y_);
+                            if (i === 0) context.moveTo(x_, y_); else context.lineTo(x_, y_);
                         }
                         context.closePath();
                     }
@@ -402,6 +444,9 @@
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
                 ctx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
                 hue = (hue + 0.5) % 360;
+
+                drawFrequencyMap(); // Draw the map each frame
+
                 [...radioWaves, ...frequencyTexts].forEach(item => {
                     item.update(deltaTime);
                     item.draw(ctx);
@@ -411,36 +456,81 @@
             }
 
             // --- Core Function to create a wave/tone ---
-            function createWave(x, y, useRange = false) {
-                if (!audioStarted) {
-                    Tone.start();
+            function createMainWave(x, y, freq) {
+                if (!audioStarted) { 
+                    Tone.start(); 
                     audioStarted = true;
+                    limiter = new Tone.Limiter(-3).toDestination();
+                    masterOut = new Tone.Volume(-12).connect(limiter);
+                    handleVolumeSlider({ target: { value: 50 } });
                 }
-                radioWaves.push(new RadioWave(x, y, hue, currentShape));
-                const synth = new Tone.Synth({oscillator: {type: "sine"}, envelope: {attack: 0.01, decay: 0.1, sustain: 1.0, release: 0.1}}).toDestination();
-                let randomFreq;
-                if (useRange) {
-                    const range = frequencyRanges[currentFreqRange];
-                    randomFreq = Math.random() * (range.max - range.min) + range.min;
-                } else {
-                    randomFreq = Math.random() * (1000 - 200) + 200; // New manual range 200-1000 Hz
-                }
-                synth.volume.value = -10;
-                synth.triggerAttack(randomFreq, Tone.now());
-                synth.volume.rampTo(-40, soundDuration, Tone.now());
+                radioWaves.push(new RadioWave(x, y, hue, currentShape, false));
+                
+                const vibrato = new Tone.Vibrato(5, 0.2).toDestination();
+                const synth = new Tone.Synth({oscillator: {type: "sine"}, envelope: {attack: 0.01, decay: 0.1, sustain: 1.0, release: 0.1}}).connect(masterOut);
+                
+                synth.volume.value = -6; // Reduced starting volume for more headroom
+                synth.volume.rampTo(-36, soundDuration, Tone.now());
+
+                synth.triggerAttack(freq, Tone.now());
                 synth.triggerRelease(Tone.now() + soundDuration);
                 if (showFrequency) {
-                    const freqText = `${Math.round(randomFreq)} Hz`;
+                    const freqText = `${Math.round(freq)} Hz`;
                     frequencyTexts.push(new FrequencyText(x, y, freqText));
                 }
             }
 
             // --- Event Listeners ---
-            function handleManualClick(e) {
+            function getFrequencyFromPosition(x, y) {
+                 const centerX = waveCanvas.width / 2;
+                const centerY = waveCanvas.height / 2;
+                const distance = Math.hypot(x - centerX, y - centerY);
+                const ratio = Math.min(distance / mapMaxRadius, 1.0);
+                return mapFreq.min + (mapFreq.max - mapFreq.min) * ratio;
+            }
+
+            function handlePointerDown(e) {
+                if(e.touches) e.preventDefault();
+                isDragging = true;
                 const mouseX = e.clientX || (e.touches && e.touches[0].clientX);
                 const mouseY = e.clientY || (e.touches && e.touches[0].clientY);
-                createWave(mouseX, mouseY, false);
+                const frequency = getFrequencyFromPosition(mouseX, mouseY);
+                
+                createMainWave(mouseX, mouseY, frequency);
+
+                // Initialize the drag synth
+                if (!dragSynth) {
+                    dragSynth = new Tone.Synth({oscillator: {type: "sine"}, envelope: {attack: 0.01, release: 0.1}}).connect(masterOut);
+                }
+                dragSynth.triggerAttack(frequency, Tone.now());
+
                 resetHideUITimer();
+            }
+
+            function handlePointerMove(e) {
+                if (isDragging) {
+                    if(e.touches) e.preventDefault();
+                    const mouseX = e.clientX || (e.touches && e.touches[0].clientX);
+                    const mouseY = e.clientY || (e.touches && e.touches[0].clientY);
+                    
+                    // Create visual drag wave
+                    radioWaves.push(new RadioWave(mouseX, mouseY, hue, currentShape, true));
+
+                    // Oscillate the pitch of the drag synth
+                    if (dragSynth) {
+                        const frequency = getFrequencyFromPosition(mouseX, mouseY);
+                        dragSynth.frequency.rampTo(frequency, 0.1); // Ramp to new frequency smoothly
+                    }
+                }
+            }
+
+            function handlePointerUp() {
+                isDragging = false;
+                // Stop the drag synth
+                if (dragSynth) {
+                    dragSynth.triggerRelease(Tone.now());
+                    dragSynth = null;
+                }
             }
 
             function toggleAutoPlay() {
@@ -452,7 +542,8 @@
                     autoPlayInterval = setInterval(() => {
                         const randomX = Math.random() * waveCanvas.width;
                         const randomY = Math.random() * waveCanvas.height;
-                        createWave(randomX, randomY, true);
+                        const randomFreq = getFrequencyFromPosition(randomX, randomY);
+                        createMainWave(randomX, randomY, randomFreq);
                     }, autoPlayIntervalTime);
                 } else {
                     autoplayBtn.textContent = 'Auto Play';
@@ -471,15 +562,6 @@
                 resetHideUITimer();
             }
 
-            function handleFreqRangeClick(e) {
-                const clickedButton = e.target.closest('.freq-btn');
-                if (!clickedButton) return;
-                currentFreqRange = clickedButton.dataset.range;
-                freqRangeContainer.querySelectorAll('.freq-btn').forEach(btn => btn.classList.remove('active'));
-                clickedButton.classList.add('active');
-                resetHideUITimer();
-            }
-
             function handleSliderInput(e) {
                 soundDuration = parseFloat(e.target.value);
                 durationValueSpan.textContent = soundDuration.toFixed(1);
@@ -489,49 +571,54 @@
             function handleIntervalSliderInput(e) {
                 autoPlayIntervalTime = parseFloat(e.target.value) * 1000;
                 intervalValueSpan.textContent = (autoPlayIntervalTime / 1000).toFixed(1);
-                if (isAutoPlaying) { // If it's already playing, restart with the new interval
-                    toggleAutoPlay(); // stop
-                    toggleAutoPlay(); // start again
+                if (isAutoPlaying) { toggleAutoPlay(); toggleAutoPlay(); }
+                resetHideUITimer();
+            }
+
+            function handleVolumeSlider(e) {
+                const volumePercent = parseInt(e.target.value);
+                volumeValueSpan.textContent = volumePercent;
+                if (masterOut) {
+                    if (volumePercent === 0) {
+                        masterOut.volume.value = -Infinity;
+                    } else {
+                        masterOut.volume.value = (volumePercent / 100) * 40 - 40;
+                    }
                 }
                 resetHideUITimer();
             }
 
-            function handleRotationToggle(e) {
-                isRotationOn = e.target.checked;
-                resetHideUITimer();
-            }
-
-            function handleFrequencyToggle(e) {
-                showFrequency = !e.target.checked;
+            function handleRotationToggle(e) { isRotationOn = e.target.checked; resetHideUITimer(); }
+            function handleFrequencyToggle(e) { showFrequency = !e.target.checked; resetHideUITimer(); }
+            function handleMusicMuteToggle(e) {
+                if (player && typeof player.isMuted === 'function') {
+                    if (e.target.checked) player.mute(); else player.unMute();
+                }
                 resetHideUITimer();
             }
 
             // --- Initial Setup ---
             window.addEventListener('resize', handleResize);
-            waveCanvas.addEventListener('click', handleManualClick);
-            waveCanvas.addEventListener('touchstart', handleManualClick);
+            waveCanvas.addEventListener('mousedown', handlePointerDown);
+            waveCanvas.addEventListener('mousemove', handlePointerMove);
+            window.addEventListener('mouseup', handlePointerUp); // Listen on window to catch mouseup outside canvas
+            waveCanvas.addEventListener('touchstart', handlePointerDown, { passive: false });
+            waveCanvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+            window.addEventListener('touchend', handlePointerUp);
+
             shapeButtonsContainer.addEventListener('click', handleShapeButtonClick);
-            freqRangeContainer.addEventListener('click', handleFreqRangeClick);
             durationSlider.addEventListener('input', handleSliderInput);
             intervalSlider.addEventListener('input', handleIntervalSliderInput);
+            volumeSlider.addEventListener('input', handleVolumeSlider);
             rotationToggle.addEventListener('change', handleRotationToggle);
             frequencyToggle.addEventListener('change', handleFrequencyToggle);
+            musicMuteToggle.addEventListener('change', handleMusicMuteToggle);
             autoplayBtn.addEventListener('click', toggleAutoPlay);
+            showUiBtn.addEventListener('click', showUI);
 
-            hotCorner.addEventListener('mouseenter', () => {
-                clearTimeout(showUITimeout);
-                showUITimeout = setTimeout(showUI, 1000);
-            });
-            hotCorner.addEventListener('mouseleave', () => {
-                clearTimeout(showUITimeout);
-            });
-            
-            // Also reset timer on any general mouse move or touch
             document.body.addEventListener('mousemove', resetHideUITimer);
             document.body.addEventListener('touchstart', resetHideUITimer);
-
-
-            resetHideUITimer(); // Start the initial timer
+            resetHideUITimer();
             animate(0);
         };
     </script>
